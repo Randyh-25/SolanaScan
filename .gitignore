@@ -1,0 +1,38 @@
+# Android Studio / IntelliJ
+*.iml
+.idea/caches/
+.idea/libraries/
+.idea/modules.xml
+.idea/workspace.xml
+.idea/navEditor.xml
+.idea/assetWizardSettings.xml
+
+# Gradle
+.gradle/
+**/build/
+
+# Local machine config
+local.properties
+
+# Android build artifacts
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# NDK / CMake
+.externalNativeBuild/
+.cxx/
+
+# Signing keys and sensitive files
+*.jks
+*.keystore
+keystore.properties
+
+# Logs and profiling outputs
+*.log
+*.hprof
+
+# Misc
+.DS_Store
+captures/

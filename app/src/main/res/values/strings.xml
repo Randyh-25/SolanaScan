@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Leaf Disease Detector</string>
+    <string name="capture_button">Capture Photo</string>
+    <string name="captured_image">Captured Image</string>
+</resources>
