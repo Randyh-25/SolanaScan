@@ -1,54 +1,51 @@
 package com.randy25.leafdiseasedetector
 
-import android.app.ActivityManager
 import android.content.Context
+import android.os.Debug
 import android.os.Process
-import java.io.RandomAccessFile
+import android.os.SystemClock
+import java.util.Locale
 
 class ResourceMonitor(private val context: Context) {
 
-    private var lastCpuTime: Long = 0
-    private var lastAppTime: Long = 0
+    private var lastAppCpuTime = 0L
+    private var lastUptime = 0L
 
     /**
-     * Mendapatkan penggunaan RAM aplikasi dalam MB
+     * Mendapatkan penggunaan RAM aplikasi (PSS) dalam MB.
+     * Sangat akurat karena mencakup Java Heap + Native Heap (tempat TFLite berjalan).
      */
     fun getRamUsage(): Long {
-        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        val memoryInfo = ActivityManager.MemoryInfo()
-        activityManager.getMemoryInfo(memoryInfo)
-        
-        val runtime = Runtime.getRuntime()
-        val usedMemInBytes = runtime.totalMemory() - runtime.freeMemory()
-        return usedMemInBytes / (1024 * 1024)
+        val debugInfo = Debug.MemoryInfo()
+        Debug.getMemoryInfo(debugInfo)
+        return (debugInfo.totalPss / 1024).toLong()
     }
 
     /**
-     * Mendapatkan persentase penggunaan CPU (Estimasi sederhana)
+     * Mendapatkan persentase penggunaan CPU menggunakan API resmi Android.
      */
     fun getCpuUsage(): String {
-        return try {
-            val reader = RandomAccessFile("/proc/stat", "r")
-            var load = reader.readLine()
-            val toks = load.split(" +".toRegex())
-            val idle1 = toks[4].toLong()
-            val cpu1 = toks[2].toLong() + toks[3].toLong() + toks[5].toLong() + 
-                       toks[6].toLong() + toks[7].toLong() + toks[8].toLong()
-            
-            try { Thread.sleep(360) } catch (e: Exception) {}
-            
-            reader.seek(0)
-            load = reader.readLine()
-            reader.close()
-            val toks2 = load.split(" +".toRegex())
-            val idle2 = toks2[4].toLong()
-            val cpu2 = toks2[2].toLong() + toks2[3].toLong() + toks2[5].toLong() + 
-                       toks2[6].toLong() + toks2[7].toLong() + toks2[8].toLong()
-            
-            val percentage = (cpu2 - cpu1).toFloat() / ((cpu2 + idle2) - (cpu1 + idle1))
-            "${"%.1f".format(percentage * 100)}%"
-        } catch (e: Exception) {
-            "N/A"
+        val appCpuTime = Process.getElapsedCpuTime()
+        val uptime = SystemClock.elapsedRealtime()
+
+        if (lastUptime == 0L) {
+            lastAppCpuTime = appCpuTime
+            lastUptime = uptime
+            return "Calculating..."
         }
+
+        val appCpuDelta = appCpuTime - lastAppCpuTime
+        val uptimeDelta = uptime - lastUptime
+
+        lastAppCpuTime = appCpuTime
+        lastUptime = uptime
+
+        val cpuPercent = if (uptimeDelta > 0) {
+            (appCpuDelta.toFloat() / uptimeDelta.toFloat()) * 100f
+        } else {
+            0f
+        }
+
+        return "%.1f%%".format(Locale.US, cpuPercent)
     }
 }

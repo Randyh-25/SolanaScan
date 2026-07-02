@@ -19,13 +19,16 @@ class CSVLogger(private val context: Context) {
 
     private fun createFile() {
         try {
-            // Simpan di folder Documents aplikasi (external files dir)
-            val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
+            // Simpan di folder public Downloads agar mudah diakses
+            val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (!dir.exists()) {
+                dir.mkdirs()
+            }
             file = File(dir, fileName)
 
             if (!file!!.exists()) {
                 val writer = FileWriter(file, true)
-                writer.append("Timestamp,Label,Confidence,Latency_ms,CPU_Usage,RAM_Usage_MB\n")
+                writer.append("Timestamp,Image_Name,Label,Confidence,Latency_ms,FPS,CPU_Usage,RAM_Usage_MB\n")
                 writer.flush()
                 writer.close()
                 Log.d("CSVLogger", "CSV file created at: ${file!!.absolutePath}")
@@ -35,13 +38,15 @@ class CSVLogger(private val context: Context) {
         }
     }
 
-    fun log(result: ClassificationResult, cpuUsage: String, ramUsage: Long) {
+    fun log(result: ClassificationResult, fps: Double, cpuUsage: String, ramUsage: Long, imageName: String = "Realtime_Camera") {
         try {
             val writer = FileWriter(file, true)
             val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
             val timestamp = sdf.format(Date(result.timestamp))
 
-            val row = "$timestamp,${result.label},${"%.2f".format(result.confidence)},${result.latencyMs},$cpuUsage,$ramUsage\n"
+            // Menggunakan Locale.US agar nilai desimal menggunakan titik (.)
+            val fpsStr = "%.1f".format(Locale.US, fps)
+            val row = "$timestamp,$imageName,${result.label},${"%.2f".format(Locale.US, result.confidence)},${result.latencyMs},$fpsStr,$cpuUsage,$ramUsage\n"
             writer.append(row)
             writer.flush()
             writer.close()

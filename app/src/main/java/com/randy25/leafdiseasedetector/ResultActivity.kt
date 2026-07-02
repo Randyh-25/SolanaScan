@@ -1,10 +1,8 @@
 package com.randy25.leafdiseasedetector
 
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.util.Log
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.randy25.leafdiseasedetector.databinding.ActivityResultBinding
@@ -14,77 +12,91 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+// ID view yang benar sesuai activity_result.xml:
+//   capturedImage     → ImageView gambar hasil foto
+//   resultLabel       → TextView nama penyakit
+//   resultConfidence  → TextView confidence score
+//   resultLatency     → TextView inferensi latency
+//   resultTimestamp   → TextView waktu capture
+//   backButton        → Button kembali ke kamera
+
 class ResultActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityResultBinding
-    private lateinit var classifierHelper: ImageClassifierHelper
+    private var classifierHelper: ImageClassifierHelper? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityResultBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        classifierHelper = ImageClassifierHelper(this)
+        val label      = intent.getStringExtra(EXTRA_LABEL)
+        val confidence = intent.getFloatExtra(EXTRA_CONFIDENCE, -1f)
+        val latency    = intent.getLongExtra(EXTRA_LATENCY, -1L)
 
-        // Load bitmap dari cache
-        val cachedBitmap = loadBitmapFromCache()
-        if (cachedBitmap != null) {
-            binding.capturedImage.setImageBitmap(cachedBitmap)
-
-            // Jalankan klasifikasi statis
-            lifecycleScope.launch {
-                val result = classifierHelper.classifyStatic(cachedBitmap)
-
-                if (result != null) {
-                    // Update UI dengan hasil
-                    binding.resultLabel.text = result.label
-                    binding.resultConfidence.text = "${"%.2f".format(result.confidence)}%"
-                    binding.resultLatency.text = "${result.latencyMs} ms"
-
-                    val dateFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-                    val timeString = dateFormat.format(Date(result.timestamp))
-                    binding.resultTimestamp.text = timeString
-
-                    Log.d(
-                        "ResultActivity",
-                        "Classification complete: ${result.label} (${result.confidence}%) in ${result.latencyMs}ms"
-                    )
-                } else {
-                    Toast.makeText(
-                        this@ResultActivity,
-                        "Classification failed",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            }
+        if (label != null && confidence >= 0f) {
+            // Jalur normal: data sudah dikirim dari CameraActivity via extras
+            displayResult(label, confidence, latency)
         } else {
-            Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
-            finish()
+            // Fallback: extras tidak ada, klasifikasi ulang dari cache
+            Log.w(TAG, "Tidak ada extras, fallback klasifikasi dari cache.")
+            classifierFromCache()
         }
 
-        // Back button
-        binding.backButton.setOnClickListener {
-            finish()
-        }
+        binding.backButton.setOnClickListener { finish() }
     }
 
-    private fun loadBitmapFromCache(): Bitmap? {
-        return try {
-            val cacheDir = cacheDir
-            val file = File(cacheDir, "captured_image.jpg")
-            if (file.exists()) {
-                BitmapFactory.decodeFile(file.absolutePath)
+    private fun displayResult(label: String, confidence: Float, latency: Long) {
+        // Tampilkan gambar dari cache
+        val cacheFile = File(cacheDir, "captured_image.jpg")
+        if (cacheFile.exists()) {
+            val bitmap = BitmapFactory.decodeFile(cacheFile.absolutePath)
+            binding.capturedImage.setImageBitmap(bitmap)
+        }
+
+        binding.resultLabel.text      = label
+        binding.resultConfidence.text = "${"%.2f".format(Locale.US, confidence)}%"
+        binding.resultLatency.text    = if (latency > 0) "$latency ms" else "-- ms"
+        binding.resultTimestamp.text  = SimpleDateFormat(
+            "dd MMM yyyy, HH:mm:ss", Locale.getDefault()
+        ).format(Date())
+    }
+
+    private fun classifierFromCache() {
+        val cacheFile = File(cacheDir, "captured_image.jpg")
+        if (!cacheFile.exists()) {
+            Log.e(TAG, "Cache kosong dan tidak ada extras!")
+            binding.resultLabel.text = "Error: tidak ada data"
+            return
+        }
+
+        val bitmap = BitmapFactory.decodeFile(cacheFile.absolutePath)
+        binding.capturedImage.setImageBitmap(bitmap)
+
+        // Inisialisasi classifier hanya saat fallback dibutuhkan
+        classifierHelper = ImageClassifierHelper(this)
+
+        lifecycleScope.launch {
+            val result = classifierHelper?.classifyStatic(bitmap)
+            if (result != null) {
+                displayResult(result.label, result.confidence, result.latencyMs)
             } else {
-                null
+                binding.resultLabel.text     = "Klasifikasi gagal"
+                binding.resultConfidence.text = "-- %"
+                binding.resultLatency.text    = "-- ms"
             }
-        } catch (e: Exception) {
-            Log.e("ResultActivity", "Error loading bitmap from cache: ${e.message}")
-            null
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        classifierHelper.release()
+        classifierHelper?.release()
+    }
+
+    companion object {
+        const val EXTRA_LABEL      = "extra_label"
+        const val EXTRA_CONFIDENCE = "extra_confidence"
+        const val EXTRA_LATENCY    = "extra_latency"
+        private const val TAG      = "ResultActivity"
     }
 }
