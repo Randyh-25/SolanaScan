@@ -199,7 +199,7 @@ class CameraActivity : AppCompatActivity() {
                     binding.confidenceScore.text  = "Confidence: ${"%.2f".format(Locale.US, result.confidence)}%"
                     binding.latencyDisplay.text   = "Latency: ${result.latencyMs} ms"
                     binding.fpsDisplay.text        = "FPS: ${"%.1f".format(Locale.US, fps)}"
-                    csvLogger.log(result, fps, resourceMonitor.getCpuUsage(), resourceMonitor.getRamUsage())
+                    csvLogger.logRealtime(result, fps, resourceMonitor.getCpuUsage(), resourceMonitor.getRamUsage())
                 } else {
                     Log.w(TAG, "classifyRealtime() mengembalikan null")
                 }
@@ -248,7 +248,7 @@ class CameraActivity : AppCompatActivity() {
                                 // Kirim hasil klasifikasi via Intent agar ResultActivity
                                 // bisa langsung tampilkan tanpa load ulang
                                 if (result != null) {
-                                    csvLogger.log(result, 0.0, resourceMonitor.getCpuUsage(), resourceMonitor.getRamUsage(), "Captured_Image")
+                                    csvLogger.logStatic(result, resourceMonitor.getCpuUsage(), resourceMonitor.getRamUsage(), "Captured_Image")
                                     putExtra(ResultActivity.EXTRA_LABEL,      result.label)
                                     putExtra(ResultActivity.EXTRA_CONFIDENCE, result.confidence)
                                     putExtra(ResultActivity.EXTRA_LATENCY,    result.latencyMs)
@@ -294,7 +294,7 @@ class CameraActivity : AppCompatActivity() {
 
             val intent = Intent(this@CameraActivity, ResultActivity::class.java).apply {
                 if (result != null) {
-                    csvLogger.log(result, 0.0, resourceMonitor.getCpuUsage(), resourceMonitor.getRamUsage(), imageName)
+                    csvLogger.logStatic(result, resourceMonitor.getCpuUsage(), resourceMonitor.getRamUsage(), imageName)
                     putExtra(ResultActivity.EXTRA_LABEL,      result.label)
                     putExtra(ResultActivity.EXTRA_CONFIDENCE, result.confidence)
                     putExtra(ResultActivity.EXTRA_LATENCY,    result.latencyMs)

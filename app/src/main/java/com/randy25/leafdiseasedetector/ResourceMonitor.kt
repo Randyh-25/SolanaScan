@@ -40,8 +40,9 @@ class ResourceMonitor(private val context: Context) {
         lastAppCpuTime = appCpuTime
         lastUptime = uptime
 
-        val cpuPercent = if (uptimeDelta > 0) {
-            (appCpuDelta.toFloat() / uptimeDelta.toFloat()) * 100f
+        val numCores = Runtime.getRuntime().availableProcessors()
+        val cpuPercent = if (uptimeDelta > 0 && numCores > 0) {
+            (appCpuDelta.toFloat() / uptimeDelta.toFloat()) * 100f / numCores
         } else {
             0f
         }

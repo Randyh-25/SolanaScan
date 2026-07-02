@@ -10,35 +10,60 @@ import java.util.*
 
 class CSVLogger(private val context: Context) {
 
-    private var file: File? = null
-    private val fileName = "leaf_detection_logs.csv"
+    private var realtimeFile: File? = null
+    private var staticFile: File? = null
+
+    private val realtimeFileName = "realtime_logs.csv"
+    private val staticFileName = "static_logs.csv"
 
     init {
-        createFile()
+        val dir = getDocumentsDir()
+        realtimeFile = createFile(dir, realtimeFileName)
+        staticFile = createFile(dir, staticFileName)
     }
 
-    private fun createFile() {
-        try {
-            // Simpan di folder public Downloads agar mudah diakses
-            val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            if (!dir.exists()) {
-                dir.mkdirs()
-            }
-            file = File(dir, fileName)
+    private fun getDocumentsDir(): File {
+        val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        return dir
+    }
 
-            if (!file!!.exists()) {
+    private fun createFile(dir: File, name: String): File? {
+        return try {
+            val file = File(dir, name)
+            if (!file.exists()) {
                 val writer = FileWriter(file, true)
                 writer.append("Timestamp,Image_Name,Label,Confidence,Latency_ms,FPS,CPU_Usage,RAM_Usage_MB\n")
                 writer.flush()
                 writer.close()
-                Log.d("CSVLogger", "CSV file created at: ${file!!.absolutePath}")
+                Log.d("CSVLogger", "CSV file created at: ${file.absolutePath}")
             }
+            file
         } catch (e: Exception) {
-            Log.e("CSVLogger", "Error creating CSV file: ${e.message}")
+            Log.e("CSVLogger", "Error creating CSV file ($name): ${e.message}")
+            null
         }
     }
 
-    fun log(result: ClassificationResult, fps: Double, cpuUsage: String, ramUsage: Long, imageName: String = "Realtime_Camera") {
+    /**
+     * Log hasil inferensi realtime kamera.
+     * Data ditulis ke realtime_logs.csv.
+     */
+    fun logRealtime(result: ClassificationResult, fps: Double, cpuUsage: String, ramUsage: Long) {
+        writeRow(realtimeFile, result, fps, cpuUsage, ramUsage, "Realtime_Camera")
+    }
+
+    /**
+     * Log hasil inferensi dari capture atau galeri.
+     * Data ditulis ke static_logs.csv.
+     */
+    fun logStatic(result: ClassificationResult, cpuUsage: String, ramUsage: Long, imageName: String) {
+        writeRow(staticFile, result, 0.0, cpuUsage, ramUsage, imageName)
+    }
+
+    private fun writeRow(file: File?, result: ClassificationResult, fps: Double, cpuUsage: String, ramUsage: Long, imageName: String) {
         try {
             val writer = FileWriter(file, true)
             val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
@@ -50,9 +75,9 @@ class CSVLogger(private val context: Context) {
             writer.append(row)
             writer.flush()
             writer.close()
-            Log.d("CSVLogger", "Logged to CSV: $row")
+            Log.d("CSVLogger", "Logged to ${file?.name}: $row")
         } catch (e: Exception) {
-            Log.e("CSVLogger", "Error writing to CSV: ${e.message}")
+            Log.e("CSVLogger", "Error writing to CSV (${file?.name}): ${e.message}")
         }
     }
 }
