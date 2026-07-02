@@ -47,6 +47,6 @@ class ResourceMonitor(private val context: Context) {
             0f
         }
 
-        return "%.1f%%".format(Locale.US, cpuPercent)
+        return "%.1f".format(Locale.US, cpuPercent)
     }
 }

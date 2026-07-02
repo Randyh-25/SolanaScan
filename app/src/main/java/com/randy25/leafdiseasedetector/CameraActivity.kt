@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.util.Log
+import android.view.View
 import android.widget.Toast
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -55,10 +56,14 @@ class CameraActivity : AppCompatActivity() {
     private lateinit var binding: ActivityCameraBinding
     private var cameraProvider: ProcessCameraProvider? = null
     private var imageCapture: ImageCapture? = null
+    private var imageAnalysis: ImageAnalysis? = null
     private lateinit var cameraExecutor: ExecutorService
     private lateinit var classifierHelper: ImageClassifierHelper
     private lateinit var csvLogger: CSVLogger
     private lateinit var resourceMonitor: ResourceMonitor
+
+    // Flag apakah inferensi realtime sedang berjalan
+    private var isDetecting = false
 
     private val pickMediaLauncher = registerForActivityResult(
         ActivityResultContracts.PickVisualMedia()
@@ -104,6 +109,29 @@ class CameraActivity : AppCompatActivity() {
                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
             )
         }
+
+        // Tombol mulai/stop deteksi realtime
+        binding.startDetectionButton.setOnClickListener { startDetection() }
+        binding.stopDetectionButton.setOnClickListener { stopDetection() }
+
+        // Switcher fokus tanaman: Semua / Tomat / Kentang
+        binding.focusToggleGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (isChecked) {
+                val mode = when (checkedId) {
+                    R.id.btnFocusTomato -> FocusMode.TOMATO
+                    R.id.btnFocusPotato -> FocusMode.POTATO
+                    else -> FocusMode.ALL
+                }
+                classifierHelper.focusMode = mode
+                val modeText = when (mode) {
+                    FocusMode.TOMATO -> "Tomat"
+                    FocusMode.POTATO -> "Kentang"
+                    FocusMode.ALL -> "Semua"
+                }
+                Toast.makeText(this, "Fokus: $modeText", Toast.LENGTH_SHORT).show()
+                Log.d(TAG, "Focus mode changed to: $mode")
+            }
+        }
     }
 
     private fun requestPermissions() {
@@ -122,6 +150,10 @@ class CameraActivity : AppCompatActivity() {
             }
         }.toTypedArray()
 
+    /**
+     * Memulai kamera dengan preview + imageCapture saja (TANPA imageAnalysis).
+     * Inferensi realtime baru dimulai ketika user menekan tombol "Mulai Deteksi".
+     */
     private fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
@@ -136,26 +168,77 @@ class CameraActivity : AppCompatActivity() {
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                     .build()
 
-                val imageAnalysis = ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build()
-                    .also { analysis ->
-                        analysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                            processImageAnalysis(imageProxy)
-                        }
-                    }
-
+                // Hanya bind preview + capture, TANPA imageAnalysis
                 cameraProvider?.unbindAll()
                 cameraProvider?.bindToLifecycle(
                     this,
                     CameraSelector.DEFAULT_BACK_CAMERA,
-                    preview, imageAnalysis, imageCapture
+                    preview, imageCapture
                 )
 
             } catch (exc: Exception) {
                 Log.e(TAG, "Camera init failed", exc)
             }
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    /**
+     * Mulai inferensi realtime: bind imageAnalysis ke kamera.
+     */
+    private fun startDetection() {
+        if (isDetecting) return
+        isDetecting = true
+
+        imageAnalysis = ImageAnalysis.Builder()
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .build()
+            .also { analysis ->
+                analysis.setAnalyzer(cameraExecutor) { imageProxy ->
+                    processImageAnalysis(imageProxy)
+                }
+            }
+
+        try {
+            cameraProvider?.bindToLifecycle(
+                this,
+                CameraSelector.DEFAULT_BACK_CAMERA,
+                imageAnalysis!!
+            )
+        } catch (exc: Exception) {
+            Log.e(TAG, "Bind imageAnalysis failed", exc)
+            isDetecting = false
+            return
+        }
+
+        // Update UI: sembunyikan tombol mulai, tampilkan overlay + tombol stop
+        binding.startDetectionButton.visibility = View.GONE
+        binding.metricsOverlay.visibility = View.VISIBLE
+        binding.stopDetectionButton.visibility = View.VISIBLE
+        Log.d(TAG, "Realtime detection started")
+    }
+
+    /**
+     * Stop inferensi realtime: unbind imageAnalysis dari kamera.
+     * Preview dan capture tetap aktif.
+     */
+    private fun stopDetection() {
+        if (!isDetecting) return
+        isDetecting = false
+
+        imageAnalysis?.let { cameraProvider?.unbind(it) }
+        imageAnalysis = null
+
+        // Update UI: tampilkan tombol mulai, sembunyikan overlay + tombol stop
+        binding.startDetectionButton.visibility = View.VISIBLE
+        binding.metricsOverlay.visibility = View.GONE
+        binding.stopDetectionButton.visibility = View.GONE
+
+        // Reset teks metrik
+        binding.predictionLabel.text = "Prediction: --"
+        binding.confidenceScore.text = "Confidence: --%"
+        binding.latencyDisplay.text = "Latency: -- ms"
+        binding.fpsDisplay.text = "FPS: --"
+        Log.d(TAG, "Realtime detection stopped")
     }
 
     /**
@@ -344,6 +427,7 @@ class CameraActivity : AppCompatActivity() {
         super.onDestroy()
         cameraExecutor.shutdown()
         classifierHelper.release()
+        csvLogger.close()
     }
 
     companion object {

@@ -9,14 +9,85 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!-- Switcher Fokus Tanaman -->
+    <LinearLayout
+        android:id="@+id/focusSwitcherContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:background="#CC000000"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Fokus Deteksi"
+            android:textColor="@android:color/white"
+            android:textSize="12sp"
+            android:layout_marginBottom="4dp" />
+
+        <com.google.android.material.button.MaterialButtonToggleGroup
+            android:id="@+id/focusToggleGroup"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:singleSelection="true"
+            app:selectionRequired="true"
+            app:checkedButton="@+id/btnFocusAll"
+            xmlns:app="http://schemas.android.com/apk/res-auto">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnFocusAll"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="Semua"
+                android:textColor="@color/toggle_text_color"
+                app:backgroundTint="@color/toggle_button_bg"
+                app:strokeColor="#80FFFFFF"
+                android:textSize="12sp"
+                android:paddingHorizontal="16dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnFocusTomato"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="Tomat"
+                android:textColor="@color/toggle_text_color"
+                app:backgroundTint="@color/toggle_button_bg"
+                app:strokeColor="#80FFFFFF"
+                android:textSize="12sp"
+                android:paddingHorizontal="16dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnFocusPotato"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="Kentang"
+                android:textColor="@color/toggle_text_color"
+                app:backgroundTint="@color/toggle_button_bg"
+                app:strokeColor="#80FFFFFF"
+                android:textSize="12sp"
+                android:paddingHorizontal="16dp" />
+
+        </com.google.android.material.button.MaterialButtonToggleGroup>
+
+    </LinearLayout>
+
     <LinearLayout
         android:id="@+id/metricsOverlay"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="top"
+        android:layout_marginTop="80dp"
         android:background="#80000000"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:padding="16dp"
+        android:visibility="gone">
 
         <TextView
             android:id="@+id/predictionLabel"
@@ -58,6 +129,32 @@
 
     </LinearLayout>
 
+    <!-- Tombol Mulai Deteksi di tengah layar -->
+    <Button
+        android:id="@+id/startDetectionButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:paddingHorizontal="32dp"
+        android:paddingVertical="12dp"
+        android:text="Mulai Deteksi"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <!-- Tombol Stop Deteksi (muncul saat sedang inferensi) -->
+    <Button
+        android:id="@+id/stopDetectionButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal|bottom"
+        android:layout_marginBottom="100dp"
+        android:paddingHorizontal="24dp"
+        android:paddingVertical="8dp"
+        android:text="Stop Deteksi"
+        android:textSize="14sp"
+        android:backgroundTint="#E53935"
+        android:visibility="gone" />
+
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/galleryButton"
         android:layout_width="wrap_content"
@@ -76,4 +173,4 @@
         android:contentDescription="@string/capture_button"
         android:src="@android:drawable/ic_menu_camera" />
 
-</FrameLayout>
+</FrameLayout>

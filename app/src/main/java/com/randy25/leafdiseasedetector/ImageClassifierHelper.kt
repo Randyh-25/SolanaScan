@@ -16,6 +16,14 @@ import java.nio.channels.FileChannel
 import kotlin.math.exp
 import kotlin.math.roundToInt
 
+/**
+ * Mode fokus deteksi tanaman.
+ * ALL = semua label aktif, TOMATO = hanya label tomat, POTATO = hanya label kentang.
+ */
+enum class FocusMode {
+    ALL, TOMATO, POTATO
+}
+
 data class ClassificationResult(
     val label: String,
     val confidence: Float,
@@ -27,6 +35,9 @@ class ImageClassifierHelper(private val context: Context) {
 
     private var interpreter: Interpreter? = null
     private var labels: List<String> = emptyList()
+
+    /** Mode fokus deteksi: atur dari CameraActivity via switcher */
+    var focusMode: FocusMode = FocusMode.ALL
 
     // Nama model dan label
     private val modelName = "shufflenetv2_int8.tflite"
@@ -42,6 +53,11 @@ class ImageClassifierHelper(private val context: Context) {
 
     // Menyimpan jumlah kelas langsung dari bentuk asli model
     private var modelOutputClasses: Int = 0
+
+    // Pre-allocated buffers untuk menghindari alokasi ulang setiap frame
+    private var inputBuffer: ByteBuffer? = null
+    private var outputBuffer: ByteBuffer? = null
+    private var pixelValues: IntArray? = null
 
     init {
         initClassifier()
@@ -80,6 +96,19 @@ class ImageClassifierHelper(private val context: Context) {
             outputScale = outQuant?.scale ?: 0f
             outputZeroPoint = outQuant?.zeroPoint ?: 0
 
+            // Pre-alokasi buffer agar tidak dibuat ulang setiap frame
+            val inputBytesPerChannel = if (inputTensorType == DataType.FLOAT32) 4 else 1
+            inputBuffer = ByteBuffer.allocateDirect(1 * INPUT_SIZE * INPUT_SIZE * 3 * inputBytesPerChannel).apply {
+                order(ByteOrder.nativeOrder())
+            }
+
+            val outputBytesPerChannel = if (outputTensorType == DataType.FLOAT32) 4 else 1
+            outputBuffer = ByteBuffer.allocateDirect(modelOutputClasses * outputBytesPerChannel).apply {
+                order(ByteOrder.nativeOrder())
+            }
+
+            pixelValues = IntArray(INPUT_SIZE * INPUT_SIZE)
+
             Log.d("ImageClassifier", "Model Loaded | Input: $inputTensorType | Output: $outputTensorType | Classes: $modelOutputClasses")
         } catch (e: Exception) {
             Log.e("ImageClassifier", "Error loading model: ${e.message}")
@@ -99,17 +128,17 @@ class ImageClassifierHelper(private val context: Context) {
         return withContext(Dispatchers.Default) {
             try {
                 val currentInterpreter = interpreter ?: return@withContext null
+                val inBuf = inputBuffer ?: return@withContext null
+                val outBuf = outputBuffer ?: return@withContext null
+                val intValues = pixelValues ?: return@withContext null
+
                 val startTime = SystemClock.uptimeMillis()
 
                 // 1. Resize Bitmap ke 224x224
                 val resizedBitmap = Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, true)
 
-                // 2. Siapkan Input ByteBuffer
-                val inputBytesPerChannel = if (inputTensorType == DataType.FLOAT32) 4 else 1
-                val inputBuffer = ByteBuffer.allocateDirect(1 * INPUT_SIZE * INPUT_SIZE * 3 * inputBytesPerChannel)
-                inputBuffer.order(ByteOrder.nativeOrder())
-
-                val intValues = IntArray(INPUT_SIZE * INPUT_SIZE)
+                // 2. Siapkan Input ByteBuffer (reuse pre-allocated buffer)
+                inBuf.clear()
                 resizedBitmap.getPixels(intValues, 0, resizedBitmap.width, 0, 0, resizedBitmap.width, resizedBitmap.height)
 
                 // 3. Preprocessing Manual: ImageNet Normalization + Quantization
@@ -125,48 +154,46 @@ class ImageClassifierHelper(private val context: Context) {
 
                         when (inputTensorType) {
                             DataType.FLOAT32 -> {
-                                inputBuffer.putFloat(r)
-                                inputBuffer.putFloat(g)
-                                inputBuffer.putFloat(b)
+                                inBuf.putFloat(r)
+                                inBuf.putFloat(g)
+                                inBuf.putFloat(b)
                             }
                             DataType.INT8 -> {
-                                inputBuffer.put(quantizeToInt8(r, inputScale, inputZeroPoint))
-                                inputBuffer.put(quantizeToInt8(g, inputScale, inputZeroPoint))
-                                inputBuffer.put(quantizeToInt8(b, inputScale, inputZeroPoint))
+                                inBuf.put(quantizeToInt8(r, inputScale, inputZeroPoint))
+                                inBuf.put(quantizeToInt8(g, inputScale, inputZeroPoint))
+                                inBuf.put(quantizeToInt8(b, inputScale, inputZeroPoint))
                             }
                             DataType.UINT8 -> {
-                                inputBuffer.put(quantizeToUint8(r, inputScale, inputZeroPoint))
-                                inputBuffer.put(quantizeToUint8(g, inputScale, inputZeroPoint))
-                                inputBuffer.put(quantizeToUint8(b, inputScale, inputZeroPoint))
+                                inBuf.put(quantizeToUint8(r, inputScale, inputZeroPoint))
+                                inBuf.put(quantizeToUint8(g, inputScale, inputZeroPoint))
+                                inBuf.put(quantizeToUint8(b, inputScale, inputZeroPoint))
                             }
                             else -> {}
                         }
                     }
                 }
 
-                // 4. Siapkan Output ByteBuffer (Berdasarkan jumlah kelas model)
-                val outputBytesPerChannel = if (outputTensorType == DataType.FLOAT32) 4 else 1
-                val outputBuffer = ByteBuffer.allocateDirect(modelOutputClasses * outputBytesPerChannel)
-                outputBuffer.order(ByteOrder.nativeOrder())
+                // 4. Siapkan Output ByteBuffer (reuse pre-allocated buffer)
+                outBuf.clear()
 
                 // 5. Eksekusi Inferensi
-                currentInterpreter.run(inputBuffer, outputBuffer)
+                currentInterpreter.run(inBuf, outBuf)
 
                 val endTime = SystemClock.uptimeMillis()
                 val latency = endTime - startTime
 
                 // 6. Postprocessing: Dequantize (Ubah kembali INT8 ke Float / Logit murni)
-                outputBuffer.rewind()
+                outBuf.rewind()
                 val logits = FloatArray(modelOutputClasses)
                 for (i in 0 until modelOutputClasses) {
                     when (outputTensorType) {
-                        DataType.FLOAT32 -> logits[i] = outputBuffer.float
+                        DataType.FLOAT32 -> logits[i] = outBuf.float
                         DataType.INT8 -> {
-                            val qVal = outputBuffer.get() // Java byte is signed (-128 to 127)
+                            val qVal = outBuf.get() // Java byte is signed (-128 to 127)
                             logits[i] = (qVal - outputZeroPoint) * outputScale
                         }
                         DataType.UINT8 -> {
-                            val qVal = outputBuffer.get().toInt() and 0xFF
+                            val qVal = outBuf.get().toInt() and 0xFF
                             logits[i] = (qVal - outputZeroPoint) * outputScale
                         }
                         else -> logits[i] = 0f
@@ -184,10 +211,34 @@ class ImageClassifierHelper(private val context: Context) {
                     sumExp += probabilities[i]
                 }
 
+                for (i in probabilities.indices) {
+                    probabilities[i] /= sumExp // Menghasilkan probabilitas murni 0.0 s/d 1.0
+                }
+
+                // Filter berdasarkan FocusMode: matikan label yang tidak sesuai
+                if (focusMode != FocusMode.ALL) {
+                    for (i in probabilities.indices) {
+                        val rawLabel = if (i < labels.size) labels[i] else ""
+                        val isTomato = rawLabel.startsWith("Tomato", ignoreCase = true)
+                        val isPotato = rawLabel.startsWith("Potato", ignoreCase = true)
+                        when (focusMode) {
+                            FocusMode.TOMATO -> if (!isTomato) probabilities[i] = 0f
+                            FocusMode.POTATO -> if (!isPotato) probabilities[i] = 0f
+                            else -> { /* ALL — tidak difilter */ }
+                        }
+                    }
+                    // Re-normalisasi agar total probabilitas = 1.0
+                    val filteredSum = probabilities.sum()
+                    if (filteredSum > 0f) {
+                        for (i in probabilities.indices) {
+                            probabilities[i] /= filteredSum
+                        }
+                    }
+                }
+
                 var maxIndex = 0
                 var maxConfidence = 0f
                 for (i in probabilities.indices) {
-                    probabilities[i] /= sumExp // Menghasilkan probabilitas murni 0.0 s/d 1.0
                     if (probabilities[i] > maxConfidence) {
                         maxConfidence = probabilities[i]
                         maxIndex = i
@@ -243,19 +294,19 @@ class ImageClassifierHelper(private val context: Context) {
          * Key HARUS cocok persis dengan isi labels.txt.
          */
         val LABEL_MAP: Map<String, String> = mapOf(
-            "Potato___healthy"                              to "Daun Kentang Sehat (K01)",
-            "Potato___Early_blight"                         to "Hawar Awal Kentang (K02)",
-            "Potato___Late_blight"                          to "Hawar Lanjut Kentang (K03)",
-            "Tomato_healthy"                                to "Daun Tomat Sehat (T01)",
-            "Tomato_Early_blight"                           to "Hawar Awal Tomat (T02)",
-            "Tomato_Late_blight"                            to "Hawar Lanjut Tomat (T03)",
-            "Tomato_Bacterial_spot"                         to "Bercak Bakteri Tomat (T04)",
-            "Tomato_Leaf_Mold"                              to "Jamur Daun Tomat (T05)",
-            "Tomato__Target_Spot"                           to "Bercak Target Tomat (T06)",
-            "Tomato_Septoria_leaf_spot"                     to "Bercak Daun Septoria Tomat (T07)",
-            "Tomato_Spider_mites_Two_spotted_spider_mite"   to "Tungau Laba-laba Tomat (T08)",
-            "Tomato__Tomato_YellowLeaf__Curl_Virus"         to "Virus Gulung Daun Kuning Tomat (T09)",
-            "Tomato__Tomato_mosaic_virus"                   to "Virus Mosaik Tomat (T10)"
+            "Potato___healthy"                              to "Potato Healthy (K01)",
+            "Potato___Early_blight"                         to "Potato Early Blight (K02)",
+            "Potato___Late_blight"                          to "Potato Late Blight (K03)",
+            "Tomato_healthy"                                to "Tomato Healthy (T01)",
+            "Tomato_Early_blight"                           to "Tomato Early Blight (T02)",
+            "Tomato_Late_blight"                            to "Tomato Late Blight (T03)",
+            "Tomato_Bacterial_spot"                         to "Tomato Bacterial Spot (T04)",
+            "Tomato_Leaf_Mold"                              to "Tomato Leaf Mold (T05)",
+            "Tomato__Target_Spot"                           to "Tomato Target Spot (T06)",
+            "Tomato_Septoria_leaf_spot"                     to "Tomato Septoria Leaf Spot (T07)",
+            "Tomato_Spider_mites_Two_spotted_spider_mite"   to "Tomato Spider Mites (T08)",
+            "Tomato__Tomato_YellowLeaf__Curl_Virus"         to "Tomato Yellow Leaf Curl Virus (T09)",
+            "Tomato__Tomato_mosaic_virus"                   to "Tomato Mosaic Virus (T10)"
         )
     }
 }
