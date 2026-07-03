@@ -23,6 +23,11 @@ class ResourceMonitor(private val context: Context) {
 
     /**
      * Mendapatkan persentase penggunaan CPU menggunakan API resmi Android.
+     *
+     * Process.getElapsedCpuTime() mengembalikan total waktu CPU yang dipakai
+     * proses ini di semua core. Dibagi elapsed realtime menghasilkan persentase
+     * penggunaan CPU relatif terhadap kapasitas 1 core (bisa >100% jika multi-thread).
+     * Ini adalah cara standar pelaporan CPU per-proses (sama seperti `top` di Linux).
      */
     fun getCpuUsage(): String {
         val appCpuTime = Process.getElapsedCpuTime()
@@ -40,9 +45,8 @@ class ResourceMonitor(private val context: Context) {
         lastAppCpuTime = appCpuTime
         lastUptime = uptime
 
-        val numCores = Runtime.getRuntime().availableProcessors()
-        val cpuPercent = if (uptimeDelta > 0 && numCores > 0) {
-            (appCpuDelta.toFloat() / uptimeDelta.toFloat()) * 100f / numCores
+        val cpuPercent = if (uptimeDelta > 0) {
+            (appCpuDelta.toFloat() / uptimeDelta.toFloat()) * 100f
         } else {
             0f
         }

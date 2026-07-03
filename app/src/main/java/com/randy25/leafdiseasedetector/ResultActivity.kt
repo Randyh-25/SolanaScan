@@ -33,10 +33,11 @@ class ResultActivity : AppCompatActivity() {
         val label      = intent.getStringExtra(EXTRA_LABEL)
         val confidence = intent.getFloatExtra(EXTRA_CONFIDENCE, -1f)
         val latency    = intent.getLongExtra(EXTRA_LATENCY, -1L)
+        val imageName  = intent.getStringExtra(EXTRA_IMAGE_NAME) ?: "--"
 
         if (label != null && confidence >= 0f) {
             // Jalur normal: data sudah dikirim dari CameraActivity via extras
-            displayResult(label, confidence, latency)
+            displayResult(label, confidence, latency, imageName)
         } else {
             // Fallback: extras tidak ada, klasifikasi ulang dari cache
             Log.w(TAG, "Tidak ada extras, fallback klasifikasi dari cache.")
@@ -46,7 +47,7 @@ class ResultActivity : AppCompatActivity() {
         binding.backButton.setOnClickListener { finish() }
     }
 
-    private fun displayResult(label: String, confidence: Float, latency: Long) {
+    private fun displayResult(label: String, confidence: Float, latency: Long, imageName: String = "--") {
         // Tampilkan gambar dari cache
         val cacheFile = File(cacheDir, "captured_image.jpg")
         if (cacheFile.exists()) {
@@ -57,6 +58,7 @@ class ResultActivity : AppCompatActivity() {
         binding.resultLabel.text      = label
         binding.resultConfidence.text = "${"%.2f".format(Locale.US, confidence)}%"
         binding.resultLatency.text    = if (latency > 0) "$latency ms" else "-- ms"
+        binding.resultImageName.text  = imageName
         binding.resultTimestamp.text  = SimpleDateFormat(
             "dd MMM yyyy, HH:mm:ss", Locale.getDefault()
         ).format(Date())
@@ -97,6 +99,7 @@ class ResultActivity : AppCompatActivity() {
         const val EXTRA_LABEL      = "extra_label"
         const val EXTRA_CONFIDENCE = "extra_confidence"
         const val EXTRA_LATENCY    = "extra_latency"
+        const val EXTRA_IMAGE_NAME = "extra_image_name"
         private const val TAG      = "ResultActivity"
     }
 }

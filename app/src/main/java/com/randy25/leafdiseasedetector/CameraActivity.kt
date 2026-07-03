@@ -336,6 +336,7 @@ class CameraActivity : AppCompatActivity() {
                                     putExtra(ResultActivity.EXTRA_CONFIDENCE, result.confidence)
                                     putExtra(ResultActivity.EXTRA_LATENCY,    result.latencyMs)
                                 }
+                                putExtra(ResultActivity.EXTRA_IMAGE_NAME, "Captured_Image")
                             }
                             startActivity(intent)
                             binding.captureButton.isEnabled = true
@@ -382,6 +383,7 @@ class CameraActivity : AppCompatActivity() {
                     putExtra(ResultActivity.EXTRA_CONFIDENCE, result.confidence)
                     putExtra(ResultActivity.EXTRA_LATENCY,    result.latencyMs)
                 }
+                putExtra(ResultActivity.EXTRA_IMAGE_NAME, imageName)
             }
             startActivity(intent)
         }
