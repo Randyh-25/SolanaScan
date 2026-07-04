@@ -12,7 +12,6 @@ import android.provider.OpenableColumns
 import android.util.Log
 import android.view.View
 import android.widget.Toast
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
@@ -66,7 +65,7 @@ class CameraActivity : AppCompatActivity() {
     private var isDetecting = false
 
     private val pickMediaLauncher = registerForActivityResult(
-        ActivityResultContracts.PickVisualMedia()
+        ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
             processGalleryImage(uri)
@@ -105,9 +104,7 @@ class CameraActivity : AppCompatActivity() {
 
         binding.captureButton.setOnClickListener { captureImage() }
         binding.galleryButton.setOnClickListener {
-            pickMediaLauncher.launch(
-                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-            )
+            pickMediaLauncher.launch("image/*")
         }
 
         // Tombol mulai/stop deteksi realtime
