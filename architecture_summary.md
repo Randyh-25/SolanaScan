@@ -18,7 +18,32 @@
 
 ---
 
-## 2. Diagram Arsitektur Tingkat Tinggi
+## 2. Diagram Arsitektur
+
+### 2.0 Overview (Garis Besar)
+
+Diagram berikut menunjukkan alur sistem secara keseluruhan dalam 4 blok utama:
+
+```mermaid
+graph TB
+    USER["Pengguna"]
+    UI["UI Layer (Camera & Result Screen)"]
+    ENGINE["Inference Engine (Preprocessing + TFLite)"]
+    MODEL["On-Device Model (ShuffleNetV2 INT8)"]
+    LOG["Monitoring & Logging"]
+
+    USER -->|"Arahkan kamera / Pilih gambar"| UI
+    UI -->|"Bitmap gambar"| ENGINE
+    ENGINE -->|"Load & Jalankan"| MODEL
+    MODEL -->|"Probabilitas 13 kelas"| ENGINE
+    ENGINE -->|"Label + Confidence + Latency"| UI
+    UI -->|"Tampilkan hasil"| USER
+    UI -.->|"Catat metrik"| LOG
+```
+
+> **Pengguna** berinteraksi melalui UI (kamera real-time atau gallery) → gambar diteruskan ke **Inference Engine** yang memproses dan menjalankan model TFLite → hasil klasifikasi dikembalikan ke UI → ditampilkan kepada pengguna. Secara paralel, metrik performa dicatat oleh modul monitoring.
+
+### 2.1 Diagram Detail (Per Komponen)
 
 ```mermaid
 graph TB
