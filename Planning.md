@@ -8,10 +8,10 @@
 - [x] **Tahap 1**: Setup Gradle dependency & Initial Project Setup
 - [x] **Tahap 2**: Persiapan File Model & Label (Assets)
 - [x] **Tahap 3**: Update AndroidManifest.xml (Permissions & Activities)
-- [/] **Tahap 4**: Implementasi Utility & Helpers (In Progress)
-- [ ] **Tahap 5**: Implementasi CameraActivity (Real-time Inference)
-- [ ] **Tahap 6**: Implementasi ResultActivity (Static Inference)
-- [ ] **Tahap 7**: Monitoring Resource & CSV Logging
+- [x] **Tahap 4**: Implementasi Utility & Helpers (In Progress)
+- [x] **Tahap 5**: Implementasi CameraActivity (Real-time Inference)
+- [x] **Tahap 6**: Implementasi ResultActivity (Static Inference)
+- [x] **Tahap 7**: Monitoring Resource & CSV Logging
 
 ---
 

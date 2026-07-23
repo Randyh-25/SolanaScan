@@ -17,7 +17,7 @@ import kotlin.math.exp
 import kotlin.math.roundToInt
 
 /**
- * Mode fokus deteksi tanaman.
+ * Mode fokus untuk deteksi tanaman.
  * ALL = semua label aktif, TOMATO = hanya label tomat, POTATO = hanya label kentang.
  */
 enum class FocusMode {
@@ -36,10 +36,9 @@ class ImageClassifierHelper(private val context: Context) {
     private var interpreter: Interpreter? = null
     private var labels: List<String> = emptyList()
 
-    /** Mode fokus deteksi: atur dari CameraActivity via switcher */
+    /** Mode fokus deteksi: diatur dari CameraActivity melalui tombol switcher. */
     var focusMode: FocusMode = FocusMode.ALL
 
-    // Nama model dan label
     private val modelName = "shufflenetv2_int8.tflite"
     private val labelsFileName = "labels.txt"
 
@@ -51,10 +50,9 @@ class ImageClassifierHelper(private val context: Context) {
     private var outputScale: Float = 0f
     private var outputZeroPoint: Int = 0
 
-    // Menyimpan jumlah kelas langsung dari bentuk asli model
+    /** Menyimpan jumlah kelas yang dihasilkan dari model. */
     private var modelOutputClasses: Int = 0
 
-    // Pre-allocated buffers untuk menghindari alokasi ulang setiap frame
     private var inputBuffer: ByteBuffer? = null
     private var outputBuffer: ByteBuffer? = null
     private var pixelValues: IntArray? = null
@@ -74,7 +72,6 @@ class ImageClassifierHelper(private val context: Context) {
 
             interpreter = Interpreter(modelBuffer, options)
 
-            // Baca labels dan filter baris kosong agar tidak ada error index OutOfBounds
             labels = assetManager.open(labelsFileName).bufferedReader().readLines().filter { it.isNotBlank() }
 
             val inputTensor = interpreter!!.getInputTensor(0)
@@ -83,20 +80,16 @@ class ImageClassifierHelper(private val context: Context) {
             inputTensorType = inputTensor.dataType()
             outputTensorType = outputTensor.dataType()
 
-            // Baca jumlah kelas dari model asli (Biasanya shape: [1, 13] -> ambil index ke-1 yaitu 13)
             modelOutputClasses = outputTensor.shape()[1]
 
-            // Ekstrak Parameter Kuantisasi Input
             val inQuant = inputTensor.quantizationParams()
             inputScale = inQuant?.scale ?: 0f
             inputZeroPoint = inQuant?.zeroPoint ?: 0
 
-            // Ekstrak Parameter Kuantisasi Output
             val outQuant = outputTensor.quantizationParams()
             outputScale = outQuant?.scale ?: 0f
             outputZeroPoint = outQuant?.zeroPoint ?: 0
 
-            // Pre-alokasi buffer agar tidak dibuat ulang setiap frame
             val inputBytesPerChannel = if (inputTensorType == DataType.FLOAT32) 4 else 1
             inputBuffer = ByteBuffer.allocateDirect(1 * INPUT_SIZE * INPUT_SIZE * 3 * inputBytesPerChannel).apply {
                 order(ByteOrder.nativeOrder())
@@ -134,20 +127,16 @@ class ImageClassifierHelper(private val context: Context) {
 
                 val startTime = SystemClock.uptimeMillis()
 
-                // 1. Resize Bitmap ke 224x224
                 val resizedBitmap = Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, true)
 
-                // 2. Siapkan Input ByteBuffer (reuse pre-allocated buffer)
                 inBuf.clear()
                 resizedBitmap.getPixels(intValues, 0, resizedBitmap.width, 0, 0, resizedBitmap.width, resizedBitmap.height)
 
-                // 3. Preprocessing Manual: ImageNet Normalization + Quantization
                 var pixel = 0
                 for (i in 0 until INPUT_SIZE) {
                     for (j in 0 until INPUT_SIZE) {
                         val valPixel = intValues[pixel++]
 
-                        // Ekstrak RGB dan Normalisasi persis seperti PyTorch transforms.Normalize
                         val r = (((valPixel shr 16 and 0xFF) / 255.0f) - 0.485f) / 0.229f
                         val g = (((valPixel shr 8 and 0xFF) / 255.0f) - 0.456f) / 0.224f
                         val b = (((valPixel and 0xFF) / 255.0f) - 0.406f) / 0.225f
@@ -173,23 +162,20 @@ class ImageClassifierHelper(private val context: Context) {
                     }
                 }
 
-                // 4. Siapkan Output ByteBuffer (reuse pre-allocated buffer)
                 outBuf.clear()
 
-                // 5. Eksekusi Inferensi
                 currentInterpreter.run(inBuf, outBuf)
 
                 val endTime = SystemClock.uptimeMillis()
                 val latency = endTime - startTime
 
-                // 6. Postprocessing: Dequantize (Ubah kembali INT8 ke Float / Logit murni)
                 outBuf.rewind()
                 val logits = FloatArray(modelOutputClasses)
                 for (i in 0 until modelOutputClasses) {
                     when (outputTensorType) {
                         DataType.FLOAT32 -> logits[i] = outBuf.float
                         DataType.INT8 -> {
-                            val qVal = outBuf.get() // Java byte is signed (-128 to 127)
+                            val qVal = outBuf.get()
                             logits[i] = (qVal - outputZeroPoint) * outputScale
                         }
                         DataType.UINT8 -> {
@@ -200,22 +186,19 @@ class ImageClassifierHelper(private val context: Context) {
                     }
                 }
 
-                // 7. Softmax (Sama persis seperti penerapan fungsi eksponensial di Python)
                 val maxLogit = logits.maxOrNull() ?: 0f
                 var sumExp = 0f
                 val probabilities = FloatArray(logits.size)
 
                 for (i in logits.indices) {
-                    // Pengurangan maxLogit dilakukan untuk stabilitas numerik (mencegah NaN/Infinity)
                     probabilities[i] = exp((logits[i] - maxLogit).toDouble()).toFloat()
                     sumExp += probabilities[i]
                 }
 
                 for (i in probabilities.indices) {
-                    probabilities[i] /= sumExp // Menghasilkan probabilitas murni 0.0 s/d 1.0
+                    probabilities[i] /= sumExp
                 }
 
-                // Filter berdasarkan FocusMode: matikan label yang tidak sesuai
                 if (focusMode != FocusMode.ALL) {
                     for (i in probabilities.indices) {
                         val rawLabel = if (i < labels.size) labels[i] else ""
@@ -224,10 +207,9 @@ class ImageClassifierHelper(private val context: Context) {
                         when (focusMode) {
                             FocusMode.TOMATO -> if (!isTomato) probabilities[i] = 0f
                             FocusMode.POTATO -> if (!isPotato) probabilities[i] = 0f
-                            else -> { /* ALL — tidak difilter */ }
+                            else -> { }
                         }
                     }
-                    // Re-normalisasi agar total probabilitas = 1.0
                     val filteredSum = probabilities.sum()
                     if (filteredSum > 0f) {
                         for (i in probabilities.indices) {
@@ -245,9 +227,7 @@ class ImageClassifierHelper(private val context: Context) {
                     }
                 }
 
-                // 8. Pemetaan ke Label String dengan proteksi pencegah Force Close
                 val rawLabel = if (maxIndex < labels.size) labels[maxIndex] else "Class_$maxIndex"
-                // 9. Terjemahkan label mentah model → format akademis naskah penelitian
                 val finalLabel = LABEL_MAP[rawLabel] ?: rawLabel
 
                 ClassificationResult(
@@ -262,7 +242,6 @@ class ImageClassifierHelper(private val context: Context) {
         }
     }
 
-    // Fungsi Kuantisasi presisi seperti Numpy np.clip & np.round
     private fun quantizeToInt8(value: Float, scale: Float, zeroPoint: Int): Byte {
         if (scale == 0f) return 0
         val q = (value / scale) + zeroPoint
@@ -290,8 +269,8 @@ class ImageClassifierHelper(private val context: Context) {
         const val INPUT_SIZE = 224
 
         /**
-         * Pemetaan label mentah model → format akademis sesuai naskah penelitian.
-         * Key HARUS cocok persis dengan isi labels.txt.
+         * Pemetaan label mentah dari model ke dalam format akademis yang sesuai dengan naskah penelitian.
+         * Key pada map ini harus sama persis dengan isi pada berkas labels.txt.
          */
         val LABEL_MAP: Map<String, String> = mapOf(
             "Potato___healthy"                              to "Potato Healthy (K01)",

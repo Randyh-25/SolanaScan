@@ -316,10 +316,10 @@ graph LR
 | ✅ Setup Gradle & Project | **Done** | Dependencies lengkap |
 | ✅ Model & Label Assets | **Done** | `shufflenetv2_int8.tflite` + `labels.txt` |
 | ✅ AndroidManifest | **Done** | Permissions, 2 Activities terdaftar |
-| 🔄 Utility & Helpers | **In Progress** | `BitmapUtils`, `ImageClassifierHelper`, `CSVLogger`, `ResourceMonitor` sudah ada |
-| ⬜ CameraActivity | **Perlu Validasi** | Kode ada, perlu testing di device |
-| ⬜ ResultActivity | **Perlu Validasi** | Kode ada, perlu testing di device |
-| ⬜ Resource Monitoring | **Perlu Validasi** | CSV logging sudah terimplementasi |
+| ✅ Utility & Helpers | **Done** | `BitmapUtils`, `ImageClassifierHelper`, `CSVLogger`, `ResourceMonitor` sudah ada |
+| ✅ CameraActivity | **Done** | Kode ada, perlu testing di device |
+| ✅ ResultActivity | **Done** | Kode ada, perlu testing di device |
+| ✅ Resource Monitoring | **Done** | CSV logging sudah terimplementasi |
 
 ---
 

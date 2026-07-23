@@ -12,14 +12,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// ID view yang benar sesuai activity_result.xml:
-//   capturedImage     → ImageView gambar hasil foto
-//   resultLabel       → TextView nama penyakit
-//   resultConfidence  → TextView confidence score
-//   resultLatency     → TextView inferensi latency
-//   resultTimestamp   → TextView waktu capture
-//   backButton        → Button kembali ke kamera
-
+/**
+ * Activity untuk menampilkan hasil klasifikasi.
+ */
 class ResultActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityResultBinding
@@ -36,10 +31,8 @@ class ResultActivity : AppCompatActivity() {
         val imageName  = intent.getStringExtra(EXTRA_IMAGE_NAME) ?: "--"
 
         if (label != null && confidence >= 0f) {
-            // Jalur normal: data sudah dikirim dari CameraActivity via extras
             displayResult(label, confidence, latency, imageName)
         } else {
-            // Fallback: extras tidak ada, klasifikasi ulang dari cache
             Log.w(TAG, "Tidak ada extras, fallback klasifikasi dari cache.")
             classifierFromCache()
         }
@@ -48,7 +41,6 @@ class ResultActivity : AppCompatActivity() {
     }
 
     private fun displayResult(label: String, confidence: Float, latency: Long, imageName: String = "--") {
-        // Tampilkan gambar dari cache
         val cacheFile = File(cacheDir, "captured_image.jpg")
         if (cacheFile.exists()) {
             val bitmap = BitmapFactory.decodeFile(cacheFile.absolutePath)
@@ -75,7 +67,6 @@ class ResultActivity : AppCompatActivity() {
         val bitmap = BitmapFactory.decodeFile(cacheFile.absolutePath)
         binding.capturedImage.setImageBitmap(bitmap)
 
-        // Inisialisasi classifier hanya saat fallback dibutuhkan
         classifierHelper = ImageClassifierHelper(this)
 
         lifecycleScope.launch {

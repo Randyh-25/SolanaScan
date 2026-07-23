@@ -12,8 +12,8 @@ class ResourceMonitor(private val context: Context) {
     private var lastUptime = 0L
 
     /**
-     * Mendapatkan penggunaan RAM aplikasi (PSS) dalam MB.
-     * Sangat akurat karena mencakup Java Heap + Native Heap (tempat TFLite berjalan).
+     * Mendapatkan penggunaan RAM aplikasi (PSS) dalam satuan MB.
+     * Sangat akurat karena mencakup Java Heap dan Native Heap (tempat TFLite berjalan).
      */
     fun getRamUsage(): Long {
         val debugInfo = Debug.MemoryInfo()
@@ -24,10 +24,10 @@ class ResourceMonitor(private val context: Context) {
     /**
      * Mendapatkan persentase penggunaan CPU menggunakan API resmi Android.
      *
-     * Process.getElapsedCpuTime() mengembalikan total waktu CPU yang dipakai
-     * proses ini di semua core. Dibagi elapsed realtime menghasilkan persentase
-     * penggunaan CPU relatif terhadap kapasitas 1 core (bisa >100% jika multi-thread).
-     * Ini adalah cara standar pelaporan CPU per-proses (sama seperti `top` di Linux).
+     * Process.getElapsedCpuTime() mengembalikan total waktu CPU yang digunakan
+     * oleh proses ini di semua inti (core). Dibagi dengan elapsed realtime menghasilkan persentase
+     * penggunaan CPU relatif terhadap kapasitas satu inti (dapat melebihi 100% jika multi-thread).
+     * Ini merupakan standar pelaporan CPU per-proses.
      */
     fun getCpuUsage(): String {
         val appCpuTime = Process.getElapsedCpuTime()

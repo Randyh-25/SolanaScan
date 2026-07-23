@@ -18,7 +18,7 @@ class CSVLogger(private val context: Context) {
     private val realtimeFileName = "realtime_logs.csv"
     private val staticFileName = "static_logs.csv"
 
-    // Counter untuk periodic flush (setiap N baris)
+    /** Penghitung untuk operasi flush periodik. */
     private var realtimeWriteCount = 0
     private val flushInterval = 10
 
@@ -27,7 +27,6 @@ class CSVLogger(private val context: Context) {
         realtimeFile = createFile(dir, realtimeFileName)
         staticFile = createFile(dir, staticFileName)
 
-        // Buka BufferedWriter untuk realtime agar tidak open/close setiap frame
         try {
             realtimeFile?.let {
                 realtimeWriter = BufferedWriter(FileWriter(it, true))
@@ -63,9 +62,9 @@ class CSVLogger(private val context: Context) {
     }
 
     /**
-     * Log hasil inferensi realtime kamera.
-     * Data ditulis ke realtime_logs.csv menggunakan BufferedWriter
-     * yang tetap terbuka agar tidak open/close setiap frame.
+     * Mencatat hasil inferensi dari kamera secara realtime.
+     * Data ditulis ke realtime_logs.csv menggunakan BufferedWriter yang tetap terbuka
+     * untuk mencegah operasi buka/tutup pada setiap bingkai (frame).
      */
     fun logRealtime(result: ClassificationResult, fps: Double, cpuUsage: String, ramUsage: Long) {
         try {
@@ -74,7 +73,6 @@ class CSVLogger(private val context: Context) {
             writer.write(row)
             realtimeWriteCount++
 
-            // Flush secara periodik, bukan setiap baris
             if (realtimeWriteCount >= flushInterval) {
                 writer.flush()
                 realtimeWriteCount = 0
@@ -85,9 +83,8 @@ class CSVLogger(private val context: Context) {
     }
 
     /**
-     * Log hasil inferensi dari capture atau galeri.
+     * Mencatat hasil inferensi dari tangkapan kamera atau galeri.
      * Data ditulis ke static_logs.csv.
-     * Karena jarang dipanggil, open/close per panggilan masih aman.
      */
     fun logStatic(result: ClassificationResult, cpuUsage: String, ramUsage: Long, imageName: String) {
         try {
@@ -105,14 +102,12 @@ class CSVLogger(private val context: Context) {
     private fun buildRow(result: ClassificationResult, fps: Double, cpuUsage: String, ramUsage: Long, imageName: String): String {
         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
         val timestamp = sdf.format(Date(result.timestamp))
-        // Menggunakan Locale.US agar nilai desimal menggunakan titik (.)
         val fpsStr = "%.1f".format(Locale.US, fps)
         return "$timestamp,$imageName,${result.label},${"%.2f".format(Locale.US, result.confidence)},${result.latencyMs},$fpsStr,$cpuUsage,$ramUsage\n"
     }
 
     /**
-     * Flush dan tutup writer saat Activity dihancurkan.
-     * Panggil dari onDestroy() di CameraActivity.
+     * Melakukan flush dan menutup writer saat Activity dihancurkan.
      */
     fun close() {
         try {

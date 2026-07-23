@@ -7,22 +7,22 @@ import androidx.camera.core.ImageProxy
 object BitmapUtils {
 
     /**
-     * Konversi ImageProxy menjadi Bitmap menggunakan fungsi bawaan CameraX.
-     * Otomatis mendukung ImageAnalysis (YUV_420_888) maupun ImageCapture (JPEG).
+     * Mengkonversi ImageProxy menjadi Bitmap menggunakan fungsi bawaan CameraX.
+     * Secara otomatis mendukung ImageAnalysis (YUV_420_888) dan ImageCapture (JPEG).
      */
     fun imageProxyToBitmap(image: ImageProxy): Bitmap {
         return image.toBitmap()
     }
 
     /**
-     * Resize Bitmap ke ukuran target (224x224 untuk model klasifikasi)
+     * Mengubah ukuran Bitmap ke dimensi target (contoh: 224x224 untuk model klasifikasi).
      */
     fun resizeBitmap(bitmap: Bitmap, targetWidth: Int, targetHeight: Int): Bitmap {
         return Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
     }
 
     /**
-     * Rotasi Bitmap sesuai derajat rotasi sensor kamera HP
+     * Memutar Bitmap sesuai dengan derajat rotasi sensor kamera perangkat.
      */
     fun rotateBitmap(bitmap: Bitmap, degrees: Float): Bitmap {
         if (degrees == 0f) return bitmap

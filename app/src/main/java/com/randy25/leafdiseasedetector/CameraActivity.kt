@@ -26,30 +26,6 @@ import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-// ============================================================
-// DAFTAR PERBAIKAN:
-//
-// [BUG KRITIS 1] bitmap SELALU null di processImageAnalysis() →
-//   Penyebab "classification failed" / "---" di UI.
-//   try-catch-finally di Kotlin: jika `finally` dipanggil,
-//   nilai return dari blok `try` DIBUANG. Artinya `bitmap`
-//   selalu = null meskipun konversi berhasil.
-//   → Pisahkan imageProxy.close() dari blok try-catch.
-//     Gunakan pola: konversi dulu, close() di finally terpisah.
-//
-// [BUG KRITIS 2] lifecycleScope.launch{} dipanggil dari background
-//   thread (cameraExecutor), bukan Main thread.
-//   lifecycleScope tidak thread-safe untuk launch dari background;
-//   bisa crash "Method addObserver must be called on the main thread".
-//   → Gunakan Dispatchers.Main secara eksplisit atau
-//     post ke main handler sebelum launch.
-//
-// [BUG MINOR] processGalleryImage & captureImage tidak menjalankan
-//   klasifikasi sama sekali — hanya save ke cache lalu buka
-//   ResultActivity. Hasil klasifikasi di ResultActivity akan
-//   kosong/---. Tambah klasifikasi sebelum startActivity.
-// ============================================================
-
 class CameraActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityCameraBinding
@@ -61,7 +37,7 @@ class CameraActivity : AppCompatActivity() {
     private lateinit var csvLogger: CSVLogger
     private lateinit var resourceMonitor: ResourceMonitor
 
-    // Flag apakah inferensi realtime sedang berjalan
+    /** Status yang menandakan apakah inferensi realtime sedang berjalan. */
     private var isDetecting = false
 
     private val pickMediaLauncher = registerForActivityResult(
@@ -107,11 +83,9 @@ class CameraActivity : AppCompatActivity() {
             pickMediaLauncher.launch("image/*")
         }
 
-        // Tombol mulai/stop deteksi realtime
         binding.startDetectionButton.setOnClickListener { startDetection() }
         binding.stopDetectionButton.setOnClickListener { stopDetection() }
 
-        // Switcher fokus tanaman: Semua / Tomat / Kentang
         binding.focusToggleGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (isChecked) {
                 val mode = when (checkedId) {
@@ -148,8 +122,8 @@ class CameraActivity : AppCompatActivity() {
         }.toTypedArray()
 
     /**
-     * Memulai kamera dengan preview + imageCapture saja (TANPA imageAnalysis).
-     * Inferensi realtime baru dimulai ketika user menekan tombol "Mulai Deteksi".
+     * Memulai kamera dengan preview dan imageCapture (tanpa imageAnalysis).
+     * Inferensi realtime baru akan dimulai ketika pengguna menekan tombol "Mulai Deteksi".
      */
     private fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
@@ -165,7 +139,6 @@ class CameraActivity : AppCompatActivity() {
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                     .build()
 
-                // Hanya bind preview + capture, TANPA imageAnalysis
                 cameraProvider?.unbindAll()
                 cameraProvider?.bindToLifecycle(
                     this,
@@ -180,7 +153,7 @@ class CameraActivity : AppCompatActivity() {
     }
 
     /**
-     * Mulai inferensi realtime: bind imageAnalysis ke kamera.
+     * Memulai inferensi realtime dengan mengikat imageAnalysis ke kamera.
      */
     private fun startDetection() {
         if (isDetecting) return
@@ -207,7 +180,6 @@ class CameraActivity : AppCompatActivity() {
             return
         }
 
-        // Update UI: sembunyikan tombol mulai, tampilkan overlay + tombol stop
         binding.startDetectionButton.visibility = View.GONE
         binding.metricsOverlay.visibility = View.VISIBLE
         binding.stopDetectionButton.visibility = View.VISIBLE
@@ -215,8 +187,8 @@ class CameraActivity : AppCompatActivity() {
     }
 
     /**
-     * Stop inferensi realtime: unbind imageAnalysis dari kamera.
-     * Preview dan capture tetap aktif.
+     * Menghentikan inferensi realtime dengan melepaskan ikatan imageAnalysis dari kamera.
+     * Preview dan fitur pengambilan gambar akan tetap aktif.
      */
     private fun stopDetection() {
         if (!isDetecting) return
@@ -225,12 +197,10 @@ class CameraActivity : AppCompatActivity() {
         imageAnalysis?.let { cameraProvider?.unbind(it) }
         imageAnalysis = null
 
-        // Update UI: tampilkan tombol mulai, sembunyikan overlay + tombol stop
         binding.startDetectionButton.visibility = View.VISIBLE
         binding.metricsOverlay.visibility = View.GONE
         binding.stopDetectionButton.visibility = View.GONE
 
-        // Reset teks metrik
         binding.predictionLabel.text = "Prediction: --"
         binding.confidenceScore.text = "Confidence: --%"
         binding.latencyDisplay.text = "Latency: -- ms"
@@ -239,20 +209,12 @@ class CameraActivity : AppCompatActivity() {
     }
 
     /**
-     * Dipanggil dari background thread (cameraExecutor).
+     * Memproses analisis gambar dari thread latar belakang (cameraExecutor).
      *
-     * [PERBAIKAN BUG 1]: Pisahkan imageProxy.close() dari try-catch.
-     * Pada kode LAMA, struktur try { ... } catch { } finally { imageProxy.close() }
-     * menyebabkan bitmap SELALU null karena di Kotlin nilai return blok try
-     * dibuang ketika finally dieksekusi pada saat yang bersamaan dengan return.
-     * Ini adalah sumber utama "classification failed" dan tampilan "---".
-     *
-     * [PERBAIKAN BUG 2]: lifecycleScope.launch{} harus dipanggil dari Main thread.
-     * Karena fungsi ini berjalan di cameraExecutor (background), kita harus
-     * pindah ke main thread dulu sebelum launch coroutine.
+     * Mengkonversi ImageProxy menjadi Bitmap dan menjalankan inferensi realtime.
+     * Pastikan coroutine dijalankan pada Main thread untuk mencegah terjadinya crash pada lifecycleScope.
      */
     private fun processImageAnalysis(imageProxy: ImageProxy) {
-        // Konversi dan close dipisah dengan benar
         val bitmap: Bitmap? = try {
             val converted = BitmapUtils.imageProxyToBitmap(imageProxy)
             BitmapUtils.rotateBitmap(converted, imageProxy.imageInfo.rotationDegrees.toFloat())
@@ -260,19 +222,15 @@ class CameraActivity : AppCompatActivity() {
             Log.e(TAG, "Konversi ImageProxy gagal: ${e.message}", e)
             null
         } finally {
-            // close() tetap dipanggil, tapi TIDAK mempengaruhi nilai return di atas
             imageProxy.close()
         }
 
-        bitmap ?: return // Jika konversi gagal, hentikan di sini
+        bitmap ?: return
 
-        // [PERBAIKAN BUG 2]: Post ke Main thread dulu, baru launch lifecycleScope
-        // karena lifecycleScope.launch bisa crash jika dipanggil dari background thread.
         runOnUiThread {
             lifecycleScope.launch {
                 val result = classifierHelper.classifyRealtime(bitmap)
                 if (result != null) {
-                    // Kalkulasi FPS dari latensi inferensi
                     val fps = if (result.latencyMs > 0) 1000.0 / result.latencyMs else 0.0
 
                     binding.predictionLabel.text  = "Prediction: ${result.label}"
@@ -288,9 +246,7 @@ class CameraActivity : AppCompatActivity() {
     }
 
     /**
-     * [PERBAIKAN BUG MINOR]: Capture → klasifikasi → simpan hasil → buka ResultActivity.
-     * Kode lama langsung saveBitmapToCache() tanpa klasifikasi,
-     * sehingga ResultActivity tidak punya data hasil deteksi.
+     * Menangkap gambar, melakukan klasifikasi, menyimpan hasil, dan membuka ResultActivity.
      */
     private fun captureImage() {
         val imageCapture = imageCapture ?: return
@@ -302,7 +258,6 @@ class CameraActivity : AppCompatActivity() {
             cameraExecutor,
             object : ImageCapture.OnImageCapturedCallback() {
                 override fun onCaptureSuccess(image: ImageProxy) {
-                    // Konversi dan close dipisah (sama seperti processImageAnalysis)
                     val bitmap: Bitmap? = try {
                         val raw = BitmapUtils.imageProxyToBitmap(image)
                         BitmapUtils.rotateBitmap(raw, image.imageInfo.rotationDegrees.toFloat())
@@ -318,15 +273,12 @@ class CameraActivity : AppCompatActivity() {
                         return
                     }
 
-                    // Klasifikasi dulu, BARU buka ResultActivity
                     runOnUiThread {
                         lifecycleScope.launch {
                             val result = classifierHelper.classifyStatic(bitmap)
                             saveBitmapToCache(bitmap)
 
                             val intent = Intent(this@CameraActivity, ResultActivity::class.java).apply {
-                                // Kirim hasil klasifikasi via Intent agar ResultActivity
-                                // bisa langsung tampilkan tanpa load ulang
                                 if (result != null) {
                                     csvLogger.logStatic(result, resourceMonitor.getCpuUsage(), resourceMonitor.getRamUsage(), "Captured_Image")
                                     putExtra(ResultActivity.EXTRA_LABEL,      result.label)
@@ -350,7 +302,7 @@ class CameraActivity : AppCompatActivity() {
     }
 
     /**
-     * [PERBAIKAN BUG MINOR]: Galeri juga perlu klasifikasi sebelum buka ResultActivity.
+     * Memproses gambar yang dipilih dari galeri untuk diklasifikasikan sebelum membuka ResultActivity.
      */
     private fun processGalleryImage(uri: Uri) {
         val bitmap = try {
